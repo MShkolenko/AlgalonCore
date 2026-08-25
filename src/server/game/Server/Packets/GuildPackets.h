@@ -143,7 +143,7 @@ namespace WorldPackets
 
             void Read() override;
 
-            String<255, Strings::NoHyperlinks> MotdText;
+            String<1024, Strings::NoHyperlinks> MotdText; // algalon-local: guild caps widened 4x - byte caps vs char columns starved Cyrillic (ru-RU realm)
         };
 
         class GuildCommandResult final : public ServerPacket
@@ -445,7 +445,7 @@ namespace WorldPackets
             uint32 OldFlags = 0;
             uint32 TabFlags[GUILD_BANK_MAX_TABS] = { };
             uint32 TabWithdrawItemLimit[GUILD_BANK_MAX_TABS] = { };
-            String<15, Strings::NoHyperlinks> RankName;
+            String<80, Strings::NoHyperlinks> RankName;
         };
 
         class GuildAddRank final : public ClientPacket
@@ -455,7 +455,7 @@ namespace WorldPackets
 
             void Read() override;
 
-            String<15, Strings::NoHyperlinks> Name;
+            String<80, Strings::NoHyperlinks> Name;
             int32 RankOrder = 0;
         };
 
@@ -542,7 +542,7 @@ namespace WorldPackets
 
             void Read() override;
 
-            String<500, Strings::NoHyperlinks> InfoText;
+            String<2000, Strings::NoHyperlinks> InfoText;
         };
 
         class GuildSetMemberNote final : public ClientPacket
@@ -554,7 +554,7 @@ namespace WorldPackets
 
             ObjectGuid NoteeGUID;
             bool IsPublic = false;          ///< 0 == Officer, 1 == Public
-            String<31, Strings::NoHyperlinks> Note;
+            String<124, Strings::NoHyperlinks> Note;
         };
 
         class GuildMemberUpdateNote final : public ServerPacket
@@ -729,7 +729,7 @@ namespace WorldPackets
 
             ObjectGuid Banker;
             uint8 BankTab = 0;
-            String<15, Strings::NoHyperlinks> Name;
+            String<80, Strings::NoHyperlinks> Name;
             String<127> Icon;
         };
 
@@ -1052,7 +1052,7 @@ namespace WorldPackets
             void Read() override;
 
             int32 Tab = 0;
-            String<500, Strings::NoHyperlinks> TabText;
+            String<2000, Strings::NoHyperlinks> TabText;
         };
 
         class GuildQueryNews final : public ClientPacket
