@@ -107,7 +107,10 @@ inline void WriteMapFieldUpdate(MapUpdateFieldBase<K, V> const& map, ByteBuffer&
             ++changesCount;
 
             if constexpr (std::is_base_of_v<IsUpdateFieldStructureTag, K>)
-                k.WriteUpdate(data, false, owner, receiver);
+                // algalon-local: restored from pre-0168e1b0 state. The 11.2.x client replaces
+                // unchanged members with 0/default, so everything must be sent as if changed.
+                // Upstream removed this only after moving to the 12.0 client.
+                k.WriteUpdate(data, true, owner, receiver);
             else
                 data << k;
 
@@ -116,7 +119,7 @@ inline void WriteMapFieldUpdate(MapUpdateFieldBase<K, V> const& map, ByteBuffer&
                 continue;
 
             if constexpr (std::is_base_of_v<IsUpdateFieldStructureTag, V>)
-                v.value.WriteUpdate(data, false, owner, receiver);
+                v.value.WriteUpdate(data, true, owner, receiver); // algalon-local: see comment above
             else
                 data << v.value;
         }
