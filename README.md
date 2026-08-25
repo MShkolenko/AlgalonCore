@@ -1,10 +1,12 @@
+**English** | [Русский](README.ru.md)
+
 # AlgalonCore
 
 A World of Warcraft server core for patch **11.2.7.65299**, developed forward from a copy of
 [TrinityCore](https://github.com/TrinityCore/TrinityCore).
 
-This is not TrinityCore and does not speak for it. Report nothing here to them; report nothing
-there about this.
+This is not TrinityCore and does not speak for it: bugs found here are not reported there, and
+theirs are not ours.
 
 ## Where it starts
 
