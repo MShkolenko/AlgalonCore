@@ -678,7 +678,12 @@ enum PlayerSlots
 static_assert(UF::size<decltype(UF::ActivePlayerData::InvSlots)>() == PLAYER_SLOT_END);
 
 #define INVENTORY_SLOT_BAG_0    255
-#define INVENTORY_DEFAULT_SIZE  16
+// ALGALON: 20 instead of the retail default of 16 - the operator asked for four extra
+// backpack slots for every account, current and future. This is the single place the
+// starting size comes from: Player::Create passes it to SetInventorySlotCount, and a
+// returning character reads its own characters.inventorySlots instead. Room exists -
+// the inventory array runs from slot 35 to 63, so 28 is the ceiling, not 16.
+#define INVENTORY_DEFAULT_SIZE  20
 
 enum EquipmentSlots : uint8                                 // 19 slots
 {

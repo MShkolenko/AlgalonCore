@@ -17939,6 +17939,18 @@ bool Player::LoadFromDB(ObjectGuid guid, CharacterDatabaseQueryHolder const& hol
 
     SetCustomizations(Trinity::Containers::MakeIteratorPair(customizations.begin(), customizations.end()), false);
     SetInventorySlotCount(fields.inventorySlots);
+    // ALGALON: the four authenticator-gated backpack slots, granted to everyone.
+    //
+    // Raising INVENTORY_DEFAULT_SIZE alone reaches only NEW characters, because an
+    // existing one loads its own stored column. And a plain SQL UPDATE does not stick:
+    // SaveToDB writes the in-memory value back, so a logged-in character restores the
+    // old number on logout. Paid for once already on the earlier Legion server, where
+    // the column read 20 and was 16 again sixteen minutes later.
+    //
+    // So enforcement goes where the core READS the value. Growing is a no-op for items:
+    // SetInventorySlotCount only mails things away when SHRINKING.
+    if (GetInventorySlotCount() < INVENTORY_DEFAULT_SIZE)
+        SetInventorySlotCount(INVENTORY_DEFAULT_SIZE);
     SetBackpackAutoSortDisabled(fields.inventoryBagFlags.HasFlag(BagSlotFlags::DisableAutoSort));
     SetBackpackSellJunkDisabled(fields.inventoryBagFlags.HasFlag(BagSlotFlags::ExcludeJunkSell));
     for (uint32 bagIndex = 0; bagIndex < fields.bagSlotFlags.size(); ++bagIndex)
