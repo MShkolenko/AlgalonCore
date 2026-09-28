@@ -147,6 +147,14 @@ namespace MageIcicles
     constexpr uint32 SlotSpells[5]   = { 148012, 148013, 148014, 148015, 148016 };
     constexpr uint32 LaunchSpells[5] = { 148017, 148018, 148019, 148020, 148021 };
     constexpr Milliseconds LaunchInterval = 400ms;     // 148023, SPELL_AURA_PERIODIC_DUMMY amplitude
+    // every spell the Icicle scripts read or cast, for Validate
+    constexpr uint32 AllSpells[] =
+    {
+        SPELL_MAGE_MASTERY_ICICLES, SPELL_MAGE_ICICLES, 148012, 148013, 148014, 148015, 148016,
+        148017, 148018, 148019, 148020, 148021, SPELL_MAGE_ICICLE_DAMAGE, SPELL_MAGE_ICICLE_LAUNCHER,
+        SPELL_MAGE_GLACIAL_SPIKE, SPELL_MAGE_GLACIAL_SPIKE_USABLE, SPELL_MAGE_ICE_LANCE_FROZEN_ICICLE,
+        SPELL_MAGE_SPLINTERING_COLD
+    };
 
     uint8 Count(Unit const* caster)
     {
@@ -284,8 +292,7 @@ class spell_mage_glacial_spike : public SpellScript
 {
     bool Validate(SpellInfo const* /*spellInfo*/) override
     {
-        return ValidateSpellInfo({ SPELL_MAGE_GLACIAL_SPIKE_DAMAGE, SPELL_MAGE_ICICLE_DAMAGE, SPELL_MAGE_ICICLES,
-            SPELL_MAGE_GLACIAL_SPIKE_USABLE });
+        return ValidateSpellInfo({ SPELL_MAGE_GLACIAL_SPIKE_DAMAGE }) && ValidateSpellInfo(MageIcicles::AllSpells);
     }
 
     SpellCastResult CheckIcicles()
@@ -298,11 +305,12 @@ class spell_mage_glacial_spike : public SpellScript
         Unit* caster = GetCaster();
         Unit* target = GetHitUnit();
         uint8 const merged = MageIcicles::Count(caster);
-        // 228600 carries the spike's own damage and the freeze (its effect 1)
-        caster->CastSpell(target, SPELL_MAGE_GLACIAL_SPIKE_DAMAGE, TRIGGERED_FULL_MASK);
-        // and each merged Icicle's damage lands with it, one 148022 per Icicle
+        // each merged Icicle's damage, one 148022 per Icicle, lands first: 228600's freeze (its
+        // effect 1) breaks on damage, so Icicles after it would free the target at once
         for (uint8 i = 0; i < merged; ++i)
             caster->CastSpell(target, SPELL_MAGE_ICICLE_DAMAGE, TRIGGERED_FULL_MASK);
+        // then the spike's own damage and the freeze
+        caster->CastSpell(target, SPELL_MAGE_GLACIAL_SPIKE_DAMAGE, TRIGGERED_FULL_MASK);
         MageIcicles::SetCount(caster, 0);
     }
 
@@ -1128,7 +1136,7 @@ class spell_mage_flurry : public SpellScript
 
     bool Validate(SpellInfo const* /*spellInfo*/) override
     {
-        return ValidateSpellInfo({ SPELL_MAGE_FLURRY_DAMAGE, SPELL_MAGE_ICICLES, SPELL_MAGE_ICICLE_DAMAGE });
+        return ValidateSpellInfo({ SPELL_MAGE_FLURRY_DAMAGE }) && ValidateSpellInfo(MageIcicles::AllSpells);
     }
 
     void EffectHit(SpellEffIndex /*effIndex*/) const
@@ -1167,7 +1175,7 @@ class spell_mage_frostbolt : public SpellScript
 {
     bool Validate(SpellInfo const* /*spell*/) override
     {
-        return ValidateSpellInfo({ SPELL_MAGE_CHILLED, SPELL_MAGE_ICICLES, SPELL_MAGE_ICICLE_DAMAGE });
+        return ValidateSpellInfo({ SPELL_MAGE_CHILLED }) && ValidateSpellInfo(MageIcicles::AllSpells);
     }
 
     void HandleChilled()
@@ -1411,11 +1419,8 @@ class spell_mage_ice_lance : public SpellScript
             SPELL_MAGE_ICY_VEINS,
             SPELL_MAGE_CHAIN_REACTION_DUMMY,
             SPELL_MAGE_CHAIN_REACTION,
-            SPELL_MAGE_FINGERS_OF_FROST,
-            SPELL_MAGE_ICICLES,
-            SPELL_MAGE_ICICLE_DAMAGE,
-            SPELL_MAGE_ICICLE_LAUNCHER
-        });
+            SPELL_MAGE_FINGERS_OF_FROST
+        }) && ValidateSpellInfo(MageIcicles::AllSpells);
     }
 
     void IndexTarget(SpellEffIndex /*effIndex*/)
