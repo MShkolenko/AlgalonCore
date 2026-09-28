@@ -28616,6 +28616,10 @@ void Player::ActivateTalentGroup(ChrSpecializationEntry const* spec)
         aurEff->HandleShapeshiftBoosts(this, false);
         aurEff->HandleShapeshiftBoosts(this, true);
     }
+
+    // Mastery depends on the spec's mastery spell (CanUseMastery) but is otherwise only recalculated on
+    // a rating change or a mastery aura application; without this a spec chosen after login keeps 0.
+    UpdateMastery();
 }
 
 void Player::StartLoadingActionButtons(std::function<void()>&& callback /*= nullptr*/)
