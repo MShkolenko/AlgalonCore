@@ -146,6 +146,9 @@ namespace MageIcicles
 {
     constexpr uint32 SlotSpells[5]   = { 148012, 148013, 148014, 148015, 148016 };
     constexpr uint32 LaunchSpells[5] = { 148017, 148018, 148019, 148020, 148021 };
+    // what each slot triggers (its effect 1, SPELL_EFFECT_TRIGGER_SPELL): the orbiting Icicle, an aura
+    // with no duration of its own, so it has to follow its slot
+    constexpr uint32 SlotVisuals[5]  = { 214130, 214127, 214126, 214125, 214124 };
     constexpr Milliseconds LaunchInterval = 400ms;     // 148023, SPELL_AURA_PERIODIC_DUMMY amplitude
     // every spell the Icicle scripts read or cast, for Validate
     constexpr uint32 AllSpells[] =
@@ -153,7 +156,7 @@ namespace MageIcicles
         SPELL_MAGE_MASTERY_ICICLES, SPELL_MAGE_ICICLES, 148012, 148013, 148014, 148015, 148016,
         148017, 148018, 148019, 148020, 148021, SPELL_MAGE_ICICLE_DAMAGE, SPELL_MAGE_ICICLE_LAUNCHER,
         SPELL_MAGE_GLACIAL_SPIKE, SPELL_MAGE_GLACIAL_SPIKE_USABLE, SPELL_MAGE_ICE_LANCE_FROZEN_ICICLE,
-        SPELL_MAGE_SPLINTERING_COLD
+        SPELL_MAGE_SPLINTERING_COLD, 214130, 214127, 214126, 214125, 214124
     };
 
     uint8 Count(Unit const* caster)
@@ -173,6 +176,65 @@ namespace MageIcicles
         Player const* player = caster->ToPlayer();
         return player && player->HasSpell(SPELL_MAGE_GLACIAL_SPIKE);
     }
+
+    // One Icicle's damage. 76613 effect 2 raises 148022's spell power coefficient by mastery x its own
+    // coefficient (a flat SpellModOp::BonusCoefficient); the core stores aura amounts and flat mods as
+    // integers, so that fraction would truncate to 0. The mastery part goes in as base points instead,
+    // and the core adds 148022's own 0.001 x spell power to it.
+    void CastIcicleDamage(Unit* caster, Unit* target)
+    {
+        CastSpellExtraArgs args(TRIGGERED_FULL_MASK);
+        if (Player const* player = caster->ToPlayer())
+            if (SpellInfo const* mastery = sSpellMgr->GetSpellInfo(SPELL_MAGE_MASTERY_ICICLES, DIFFICULTY_NONE))
+                if (mastery->GetEffects().size() > EFFECT_2)
+                {
+                    // the mod is in hundredths of a coefficient (Unit::SpellDamageBonusDone multiplies the
+                    // coefficient by 100 around it), and its whole part does reach the core: add the fraction
+                    float const mod = *player->m_activePlayerData->Mastery * mastery->GetEffect(EFFECT_2).BonusCoefficient;
+                    float const lost = (mod - std::trunc(mod)) / 100.0f;
+                    int32 const bonus = int32(caster->SpellBaseDamageBonusDone(SPELL_SCHOOL_MASK_FROST) * lost);
+                    if (bonus > 0)
+                        args.AddSpellMod(SPELLVALUE_BASE_POINT0, bonus);
+                }
+        caster->CastSpell(target, SPELL_MAGE_ICICLE_DAMAGE, args);
+    }
+
+    // A slot's orbiting Icicle comes from the slot's effect 1 (TRIGGER_SPELL), which the core queues, so
+    // it may not exist yet when the count changes. Shortly after, each visual is made to follow its slot.
+    class VisualSyncEvent : public BasicEvent
+    {
+    public:
+        explicit VisualSyncEvent(Unit* caster) : _caster(caster) { }
+
+        bool Execute(uint64 /*time*/, uint32 /*diff*/) override
+        {
+            Sync(_caster);
+            return true;
+        }
+
+        static void Sync(Unit* _caster)
+        {
+            for (uint8 slot = 0; slot < 5; ++slot)
+            {
+                Aura* slotAura = _caster->GetAura(SlotSpells[slot]);
+                if (!slotAura)
+                {
+                    _caster->RemoveAurasDueToSpell(SlotVisuals[slot]);
+                    continue;
+                }
+                if (!_caster->HasAura(SlotVisuals[slot]))
+                    _caster->CastSpell(_caster, SlotVisuals[slot], TRIGGERED_FULL_MASK);
+                if (Aura* visual = _caster->GetAura(SlotVisuals[slot]))
+                {
+                    visual->SetMaxDuration(slotAura->GetMaxDuration());
+                    visual->SetDuration(slotAura->GetDuration());
+                }
+            }
+        }
+
+    private:
+        Unit* _caster;
+    };
 
     // The stack and the slot visuals follow the count; with Glacial Spike known, a full set lights
     // "Glacial Spike usable!" (199844).
@@ -196,10 +258,17 @@ namespace MageIcicles
             {
                 if (!caster->HasAura(SlotSpells[slot]))
                     caster->CastSpell(caster, SlotSpells[slot], TRIGGERED_FULL_MASK);
+                // the slot lives as long as the stack, and its orbiting Icicle as long as the slot
+                if (Aura* slotAura = caster->GetAura(SlotSpells[slot]))
+                    slotAura->RefreshDuration();
             }
             else
+            {
                 caster->RemoveAurasDueToSpell(SlotSpells[slot]);
+                caster->RemoveAurasDueToSpell(SlotVisuals[slot]);
+            }
         }
+        caster->m_Events.AddEventAtOffset(new VisualSyncEvent(caster), 100ms);
         if (KnowsGlacialSpike(caster) && count >= Cap(caster))
         {
             if (!caster->HasAura(SPELL_MAGE_GLACIAL_SPIKE_USABLE))
@@ -214,7 +283,7 @@ namespace MageIcicles
     void Launch(Unit* caster, Unit* target, uint8 slot)
     {
         caster->CastSpell(target, LaunchSpells[std::min<uint8>(slot, 4)], TRIGGERED_FULL_MASK);
-        caster->CastSpell(target, SPELL_MAGE_ICICLE_DAMAGE, TRIGGERED_FULL_MASK);
+        CastIcicleDamage(caster, target);
     }
 
     // "Any excess Icicles gained will be automatically launched": at the cap the oldest one goes.
@@ -281,7 +350,8 @@ namespace MageIcicles
         if (!Count(caster) || caster->HasAura(SPELL_MAGE_ICICLE_LAUNCHER))
             return;                                     // already launching
         caster->CastSpell(caster, SPELL_MAGE_ICICLE_LAUNCHER, TRIGGERED_FULL_MASK);
-        caster->m_Events.AddEventAtOffset(new LaunchEvent(caster, target->GetGUID()), LaunchInterval);
+        // the first Icicle goes with the Ice Lance itself, the rest one per 148023 period
+        caster->m_Events.AddEventAtOffset(new LaunchEvent(caster, target->GetGUID()), 1ms);
     }
 }
 
@@ -308,7 +378,7 @@ class spell_mage_glacial_spike : public SpellScript
         // each merged Icicle's damage, one 148022 per Icicle, lands first: 228600's freeze (its
         // effect 1) breaks on damage, so Icicles after it would free the target at once
         for (uint8 i = 0; i < merged; ++i)
-            caster->CastSpell(target, SPELL_MAGE_ICICLE_DAMAGE, TRIGGERED_FULL_MASK);
+            MageIcicles::CastIcicleDamage(caster, target);
         // then the spike's own damage and the freeze
         caster->CastSpell(target, SPELL_MAGE_GLACIAL_SPIKE_DAMAGE, TRIGGERED_FULL_MASK);
         MageIcicles::SetCount(caster, 0);
@@ -2323,6 +2393,19 @@ public:
     explicit spell_mage_wildfire_crit(AuraType auraType, SpellEffIndex effIndex) : _auraType(auraType), _effIndex(effIndex) { }
 };
 
+// A logout within the sync delay could keep an orphaned or missing slot visual; set them right on login.
+class player_mage_icicle_visuals : public PlayerScript
+{
+public:
+    player_mage_icicle_visuals() : PlayerScript("player_mage_icicle_visuals") { }
+
+    void OnLogin(Player* player, bool /*firstLogin*/) override
+    {
+        if (player->GetClass() == CLASS_MAGE)
+            MageIcicles::VisualSyncEvent::Sync(player);
+    }
+};
+
 void AddSC_mage_spell_scripts()
 {
     RegisterSpellScript(spell_mage_alter_time_aura);
@@ -2356,6 +2439,7 @@ void AddSC_mage_spell_scripts()
     RegisterSpellScript(spell_mage_flurry_damage);
     RegisterSpellScript(spell_mage_frostbolt);
     RegisterSpellScript(spell_mage_glacial_spike);
+    new player_mage_icicle_visuals();
     RegisterSpellScript(spell_mage_heat_shimmer);
     RegisterSpellScript(spell_mage_heat_shimmer_remove);
     RegisterSpellScript(spell_mage_hot_streak);
