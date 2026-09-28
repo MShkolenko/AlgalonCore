@@ -277,6 +277,42 @@ namespace MageIcicles
     }
 }
 
+// 199786 - Glacial Spike: "merges your current Icicles into it. It impales your target, dealing
+// $228600s1 damage plus all of the damage stored in your Icicles, and freezes the target in place.
+// Requires 5 Icicles to cast."
+class spell_mage_glacial_spike : public SpellScript
+{
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ SPELL_MAGE_GLACIAL_SPIKE_DAMAGE, SPELL_MAGE_ICICLE_DAMAGE, SPELL_MAGE_ICICLES,
+            SPELL_MAGE_GLACIAL_SPIKE_USABLE });
+    }
+
+    SpellCastResult CheckIcicles()
+    {
+        return MageIcicles::Count(GetCaster()) >= MageIcicles::Cap(GetCaster()) ? SPELL_CAST_OK : SPELL_FAILED_CASTER_AURASTATE;
+    }
+
+    void HandleSpike(SpellEffIndex /*effIndex*/)
+    {
+        Unit* caster = GetCaster();
+        Unit* target = GetHitUnit();
+        uint8 const merged = MageIcicles::Count(caster);
+        // 228600 carries the spike's own damage and the freeze (its effect 1)
+        caster->CastSpell(target, SPELL_MAGE_GLACIAL_SPIKE_DAMAGE, TRIGGERED_FULL_MASK);
+        // and each merged Icicle's damage lands with it, one 148022 per Icicle
+        for (uint8 i = 0; i < merged; ++i)
+            caster->CastSpell(target, SPELL_MAGE_ICICLE_DAMAGE, TRIGGERED_FULL_MASK);
+        MageIcicles::SetCount(caster, 0);
+    }
+
+    void Register() override
+    {
+        OnCheckCast += SpellCheckCastFn(spell_mage_glacial_spike::CheckIcicles);
+        OnEffectHitTarget += SpellEffectFn(spell_mage_glacial_spike::HandleSpike, EFFECT_0, SPELL_EFFECT_DUMMY);
+    }
+};
+
 // 110909 - Alter Time Aura
 // 342246 - Alter Time Aura
 class spell_mage_alter_time_aura : public AuraScript
@@ -1092,7 +1128,7 @@ class spell_mage_flurry : public SpellScript
 
     bool Validate(SpellInfo const* /*spellInfo*/) override
     {
-        return ValidateSpellInfo({ SPELL_MAGE_FLURRY_DAMAGE });
+        return ValidateSpellInfo({ SPELL_MAGE_FLURRY_DAMAGE, SPELL_MAGE_ICICLES, SPELL_MAGE_ICICLE_DAMAGE });
     }
 
     void EffectHit(SpellEffIndex /*effIndex*/) const
@@ -1131,7 +1167,7 @@ class spell_mage_frostbolt : public SpellScript
 {
     bool Validate(SpellInfo const* /*spell*/) override
     {
-        return ValidateSpellInfo({ SPELL_MAGE_CHILLED });
+        return ValidateSpellInfo({ SPELL_MAGE_CHILLED, SPELL_MAGE_ICICLES, SPELL_MAGE_ICICLE_DAMAGE });
     }
 
     void HandleChilled()
@@ -1375,7 +1411,10 @@ class spell_mage_ice_lance : public SpellScript
             SPELL_MAGE_ICY_VEINS,
             SPELL_MAGE_CHAIN_REACTION_DUMMY,
             SPELL_MAGE_CHAIN_REACTION,
-            SPELL_MAGE_FINGERS_OF_FROST
+            SPELL_MAGE_FINGERS_OF_FROST,
+            SPELL_MAGE_ICICLES,
+            SPELL_MAGE_ICICLE_DAMAGE,
+            SPELL_MAGE_ICICLE_LAUNCHER
         });
     }
 
@@ -2311,6 +2350,7 @@ void AddSC_mage_spell_scripts()
     RegisterSpellScript(spell_mage_flurry);
     RegisterSpellScript(spell_mage_flurry_damage);
     RegisterSpellScript(spell_mage_frostbolt);
+    RegisterSpellScript(spell_mage_glacial_spike);
     RegisterSpellScript(spell_mage_heat_shimmer);
     RegisterSpellScript(spell_mage_heat_shimmer_remove);
     RegisterSpellScript(spell_mage_hot_streak);
