@@ -9,6 +9,8 @@
 [TrinityCore](https://github.com/TrinityCore/TrinityCore) и развивается дальше как отдельный
 проект.
 
+**Сайт реалма: [algaloncore.com](https://algaloncore.com)** - регистрация аккаунта и инструкция, как подключиться.
+
 > **Это не TrinityCore и не говорит от его имени.** Найденные здесь ошибки туда не сообщаются,
 > а их ошибки — не наши. Если вы ищете живой, поддерживаемый сообществом сервер, идите к ним.
 
@@ -103,6 +105,8 @@ TrinityCore распространяется под **GPL-2.0**, и эта пр�
 A World of Warcraft server core pinned at patch **11.2.7.65299**, started from a copy of
 [TrinityCore](https://github.com/TrinityCore/TrinityCore) and developed forward as a separate
 project.
+
+**Realm site: [algaloncore.com](https://algaloncore.com)** - account registration and how to connect.
 
 > **This is not TrinityCore and does not speak for it.** Bugs found here are not reported there,
 > and theirs are not ours. If you want a living, community-supported server, go to them.
