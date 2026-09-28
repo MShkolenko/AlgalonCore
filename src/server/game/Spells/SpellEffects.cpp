@@ -515,7 +515,15 @@ void Spell::EffectEnvironmentalDMG()
 
     // CalcAbsorbResist already in Player::EnvironmentalDamage
     if (unitTarget->GetTypeId() == TYPEID_PLAYER)
-        unitTarget->ToPlayer()->EnvironmentalDamage(DAMAGE_FIRE, damage);
+    {
+        // The value is computed at the caster's own level. Any other damage a scaled creature deals
+        // is brought to the target's level in DealDamageMods, which this path never reaches: the
+        // player deals environmental damage to itself.
+        uint32 amount = damage;
+        if (Unit* unitCaster = GetUnitCasterForEffectHandlers())
+            amount = uint32(amount * unitCaster->GetDamageMultiplierForTarget(unitTarget));
+        unitTarget->ToPlayer()->EnvironmentalDamage(DAMAGE_FIRE, amount);
+    }
     else
     {
         Unit* unitCaster = GetUnitCasterForEffectHandlers();
