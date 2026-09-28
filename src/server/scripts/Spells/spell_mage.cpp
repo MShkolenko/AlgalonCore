@@ -123,8 +123,159 @@ enum MageSpells
     SPELL_MAGE_CHAIN_REACTION                    = 278310,
     SPELL_MAGE_TOUCH_OF_THE_MAGI_EXPLODE         = 210833,
     SPELL_MAGE_WILDFIRE_TALENT                   = 383489,
-    SPELL_MAGE_WINTERS_CHILL                     = 228358
+    SPELL_MAGE_WINTERS_CHILL                     = 228358,
+    SPELL_MAGE_MASTERY_ICICLES                   = 76613,
+    SPELL_MAGE_ICICLES                           = 205473,
+    SPELL_MAGE_ICICLE_DAMAGE                     = 148022,
+    SPELL_MAGE_ICICLE_LAUNCHER                   = 148023,
+    SPELL_MAGE_GLACIAL_SPIKE                     = 199786,
+    SPELL_MAGE_GLACIAL_SPIKE_USABLE              = 199844,
+    SPELL_MAGE_GLACIAL_SPIKE_DAMAGE              = 228600,
+    SPELL_MAGE_ICE_LANCE_FROZEN_ICICLE           = 381244,
+    SPELL_MAGE_SPLINTERING_COLD                  = 379049
 };
+
+// Mastery: Icicles (76613). The client data carries the whole mechanic on dummy effects, so it only
+// works with a script: 205473 counts the stored Icicles (stacks up to 5), 148012-148016 are the five
+// slots with their visuals, 148017-148021 launch a slot, 148022 is one Icicle's damage, 148023 is the
+// 400 ms launcher, and the cap is 76613's second effect. Client text (11.2.7): "Casting Frostbolt,
+// Ice Lance (381244) or Flurry grants you an Icicle. Casting Ice Lance causes all Icicles stored to
+// begin launching at the target, each dealing $148022s1 Frost damage. Up to $s2 Icicles can be
+// stored. Any excess Icicles gained will be automatically launched."
+namespace MageIcicles
+{
+    constexpr uint32 SlotSpells[5]   = { 148012, 148013, 148014, 148015, 148016 };
+    constexpr uint32 LaunchSpells[5] = { 148017, 148018, 148019, 148020, 148021 };
+    constexpr Milliseconds LaunchInterval = 400ms;     // 148023, SPELL_AURA_PERIODIC_DUMMY amplitude
+
+    uint8 Count(Unit const* caster)
+    {
+        Aura const* stack = caster->GetAura(SPELL_MAGE_ICICLES);
+        return stack ? stack->GetStackAmount() : 0;
+    }
+
+    uint8 Cap(Unit const* caster)
+    {
+        AuraEffect const* cap = caster->GetAuraEffect(SPELL_MAGE_MASTERY_ICICLES, EFFECT_1);
+        return cap ? uint8(std::clamp(cap->GetAmount(), 1, 5)) : 5;
+    }
+
+    bool KnowsGlacialSpike(Unit const* caster)
+    {
+        Player const* player = caster->ToPlayer();
+        return player && player->HasSpell(SPELL_MAGE_GLACIAL_SPIKE);
+    }
+
+    // The stack and the slot visuals follow the count; with Glacial Spike known, a full set lights
+    // "Glacial Spike usable!" (199844).
+    void SetCount(Unit* caster, uint8 count)
+    {
+        if (!count)
+            caster->RemoveAurasDueToSpell(SPELL_MAGE_ICICLES);
+        else
+        {
+            if (!caster->HasAura(SPELL_MAGE_ICICLES))
+                caster->CastSpell(caster, SPELL_MAGE_ICICLES, TRIGGERED_FULL_MASK);
+            if (Aura* stack = caster->GetAura(SPELL_MAGE_ICICLES))
+            {
+                stack->SetStackAmount(count);
+                stack->RefreshDuration();
+            }
+        }
+        for (uint8 slot = 0; slot < 5; ++slot)
+        {
+            if (slot < count)
+            {
+                if (!caster->HasAura(SlotSpells[slot]))
+                    caster->CastSpell(caster, SlotSpells[slot], TRIGGERED_FULL_MASK);
+            }
+            else
+                caster->RemoveAurasDueToSpell(SlotSpells[slot]);
+        }
+        if (KnowsGlacialSpike(caster) && count >= Cap(caster))
+        {
+            if (!caster->HasAura(SPELL_MAGE_GLACIAL_SPIKE_USABLE))
+                caster->CastSpell(caster, SPELL_MAGE_GLACIAL_SPIKE_USABLE, TRIGGERED_FULL_MASK);
+        }
+        else
+            caster->RemoveAurasDueToSpell(SPELL_MAGE_GLACIAL_SPIKE_USABLE);
+    }
+
+    // One Icicle at the target: the slot's launch visual, then 148022. Its damage is the core's own
+    // calculation of $148022s1 with the caster's spell mods (76613 e2 is the mastery scaling).
+    void Launch(Unit* caster, Unit* target, uint8 slot)
+    {
+        caster->CastSpell(target, LaunchSpells[std::min<uint8>(slot, 4)], TRIGGERED_FULL_MASK);
+        caster->CastSpell(target, SPELL_MAGE_ICICLE_DAMAGE, TRIGGERED_FULL_MASK);
+    }
+
+    // "Any excess Icicles gained will be automatically launched": at the cap the oldest one goes.
+    void Gain(Unit* caster, Unit* target, uint8 amount)
+    {
+        if (!caster->HasAura(SPELL_MAGE_MASTERY_ICICLES) || !amount)
+            return;
+        uint8 count = Count(caster);
+        uint8 const cap = Cap(caster);
+        for (uint8 i = 0; i < amount; ++i)
+        {
+            if (count < cap)
+                ++count;
+            else if (target && target->IsAlive())
+                Launch(caster, target, 0);
+        }
+        SetCount(caster, count);
+    }
+
+    // Frostbolt and Flurry: one Icicle, or with Splintering Cold (379049) a $s2% chance of $s1.
+    uint8 BoltAmount(Unit const* caster)
+    {
+        if (AuraEffect const* amount = caster->GetAuraEffect(SPELL_MAGE_SPLINTERING_COLD, EFFECT_0))
+            if (AuraEffect const* chance = caster->GetAuraEffect(SPELL_MAGE_SPLINTERING_COLD, EFFECT_1))
+                if (roll_chance_i(chance->GetAmount()))
+                    return uint8(std::max(amount->GetAmount(), 1));
+        return 1;
+    }
+
+    // "Casting Ice Lance causes all Icicles stored to begin launching at the target" - one every
+    // 400 ms (148023's amplitude), newest slot first, until none are left.
+    class LaunchEvent : public BasicEvent
+    {
+    public:
+        LaunchEvent(Unit* caster, ObjectGuid const& target) : _caster(caster), _target(target) { }
+
+        bool Execute(uint64 time, uint32 /*diff*/) override
+        {
+            uint8 const count = Count(_caster);
+            Unit* target = ObjectAccessor::GetUnit(*_caster, _target);
+            if (!count || !target || !target->IsAlive() || !_caster->IsAlive())
+            {
+                _caster->RemoveAurasDueToSpell(SPELL_MAGE_ICICLE_LAUNCHER);
+                return true;
+            }
+            Launch(_caster, target, count - 1);
+            SetCount(_caster, count - 1);
+            if (count == 1)
+            {
+                _caster->RemoveAurasDueToSpell(SPELL_MAGE_ICICLE_LAUNCHER);
+                return true;
+            }
+            _caster->m_Events.AddEvent(this, Milliseconds(time) + LaunchInterval);
+            return false;
+        }
+
+    private:
+        Unit* _caster;
+        ObjectGuid _target;
+    };
+
+    void StartLaunching(Unit* caster, Unit* target)
+    {
+        if (!Count(caster) || caster->HasAura(SPELL_MAGE_ICICLE_LAUNCHER))
+            return;                                     // already launching
+        caster->CastSpell(caster, SPELL_MAGE_ICICLE_LAUNCHER, TRIGGERED_FULL_MASK);
+        caster->m_Events.AddEventAtOffset(new LaunchEvent(caster, target->GetGUID()), LaunchInterval);
+    }
+}
 
 // 110909 - Alter Time Aura
 // 342246 - Alter Time Aura
@@ -947,6 +1098,7 @@ class spell_mage_flurry : public SpellScript
     void EffectHit(SpellEffIndex /*effIndex*/) const
     {
         GetCaster()->m_Events.AddEventAtOffset(new FlurryEvent(GetCaster(), GetHitUnit()->GetGUID(), GetSpell()->m_castId, GetEffectValue() - 1), randtime(300ms, 400ms));
+        MageIcicles::Gain(GetCaster(), GetHitUnit(), MageIcicles::BoltAmount(GetCaster()));   // Mastery: Icicles
     }
 
     void Register() override
@@ -985,7 +1137,10 @@ class spell_mage_frostbolt : public SpellScript
     void HandleChilled()
     {
         if (Unit* target = GetHitUnit())
+        {
             GetCaster()->CastSpell(target, SPELL_MAGE_CHILLED, TRIGGERED_IGNORE_CAST_IN_PROGRESS);
+            MageIcicles::Gain(GetCaster(), target, MageIcicles::BoltAmount(GetCaster()));   // Mastery: Icicles
+        }
     }
 
     void Register() override
@@ -1248,6 +1403,17 @@ class spell_mage_ice_lance : public SpellScript
             // Chain Reaction
             if (caster->HasAura(SPELL_MAGE_CHAIN_REACTION_DUMMY))
                 caster->CastSpell(caster, SPELL_MAGE_CHAIN_REACTION, true);
+        }
+
+        // Mastery: Icicles - only the primary target
+        if (index == 0 && caster->HasAura(SPELL_MAGE_MASTERY_ICICLES))
+        {
+            if (AuraEffect const* frozenChance = caster->GetAuraEffect(SPELL_MAGE_ICE_LANCE_FROZEN_ICICLE, EFFECT_0))
+                if (target->HasAuraState(AURA_STATE_FROZEN, GetSpellInfo(), caster) && roll_chance_i(frozenChance->GetAmount()))
+                    MageIcicles::Gain(caster, target, 1);
+            // "Passive: Ice Lance no longer launches Icicles" once Glacial Spike is known
+            if (!MageIcicles::KnowsGlacialSpike(caster))
+                MageIcicles::StartLaunching(caster, target);
         }
 
         // put target index for chain value multiplier into EFFECT_1 base points, otherwise triggered spell doesn't know which damage multiplier to apply
