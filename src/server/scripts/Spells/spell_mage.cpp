@@ -188,10 +188,11 @@ namespace MageIcicles
             if (SpellInfo const* mastery = sSpellMgr->GetSpellInfo(SPELL_MAGE_MASTERY_ICICLES, DIFFICULTY_NONE))
                 if (mastery->GetEffects().size() > EFFECT_2)
                 {
-                    // the mod is in hundredths of a coefficient (Unit::SpellDamageBonusDone multiplies the
-                    // coefficient by 100 around it), and its whole part does reach the core: add the fraction
+                    // retail (SimulationCraft icicle_t): coefficient = 0.001 + mastery x 0.028, a plain
+                    // coefficient. The core reads the int32 flat mod as hundredths (x100 around
+                    // ApplySpellMod) and so adds only trunc(m) / 100 of it; the script adds the rest.
                     float const mod = *player->m_activePlayerData->Mastery * mastery->GetEffect(EFFECT_2).BonusCoefficient;
-                    float const lost = (mod - std::trunc(mod)) / 100.0f;
+                    float const lost = mod - std::trunc(mod) / 100.0f;
                     int32 const bonus = int32(caster->SpellBaseDamageBonusDone(SPELL_SCHOOL_MASK_FROST) * lost);
                     if (bonus > 0)
                         args.AddSpellMod(SPELLVALUE_BASE_POINT0, bonus);
